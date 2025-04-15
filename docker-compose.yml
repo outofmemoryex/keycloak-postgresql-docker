@@ -1,0 +1,83 @@
+version: '3.9'
+
+services:
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    container_name: keycloak
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres/keycloak
+      KC_DB_URL_DATABASE: keycloak
+      KC_DB_SCHEMA: public
+
+      # same as in service postgres
+      KC_DB_USERNAME: ${POSTGRES_USER}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
+    
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+    
+      KC_HOSTNAME: ${KEYCLOAK_HOSTNAME}
+      KC_HOSTNAME_PORT: 7080
+
+      KC_HEALTH_ENABLED: true
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:7080/health/ready" ]
+      interval: 15s
+      timeout: 2s
+      retries: 15
+    
+    # -------------------------------------------------------------------------------------
+    # Choose Mode (XOR)
+    # -------------------------------------------------------------------------------------
+    # Start Keycloak in dev-mode:
+    # - HTTP is enabled 
+    # - Strict hostname resolution is disabled
+    # - Cache is set to local (No distributed cache mechanism used for high availability)
+    # - Theme-caching and template-caching is disabled
+    # -------------------------------------------------------------------------------------
+    command: [ "start-dev", "--http-port", "7080", "--https-port", "7443" ]
+    
+    # -------------------------------------------------------------------------------------
+    # Start Keycloak in production-mode:
+    # - HTTP is disabled as transport layer security (HTTPS) is essential
+    # - Hostname configuration is expected
+    # - HTTPS/TLS configuration is expected
+    #
+    # Further information see https://www.keycloak.org/server/configuration-production
+    # -------------------------------------------------------------------------------------
+    # command: [ "start", "--http-port", "7080", "--https-port", "7443" ]
+    
+    depends_on:
+      - postgres
+    ports:
+      - "7080:7080"
+      - "7443:7443"
+    networks:
+      - keycloak-network
+    volumes:
+      - ./keycloak-data:/opt/keycloak/data
+      - ./certs:/etc/x509/https
+
+  postgres:
+    image: postgres:latest
+    container_name: postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    networks:
+      - keycloak-network
+    volumes:
+      - ./postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      
+networks:
+  keycloak-network:
+    driver: bridge
+
